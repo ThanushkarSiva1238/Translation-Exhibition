@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Human vs AI — Guess the Translation?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;900&family=Cinzel+Decorative:wght@700;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ============================= TOKENS ============================= */
+:root{
+  --void: #07060c;
+  --stone-900: #0f0d16;
+  --stone-800: #171320;
+  --stone-700: #221c2e;
+  --stone-600: #322a41;
+  --hairline: rgba(180,165,210,0.14);
+  --text-hi: #efeaf7;
+  --text-mid: #c3b8d6;
+  --text-lo: #7d7292;
+
+  --rank-b-1: #5b7fff;
+  --rank-b-2: #9b6bff;
+  --rank-a-1: #ff3b4e;
+  --rank-a-2: #00e5ff;
+  --rank-s-1: #8fe3ff;
+  --rank-s-2: #eafcff;
+  --rank-d-1: #ff2d6e;
+  --rank-d-2: #c026ff;
+
+  --accent-1: var(--rank-b-1);
+  --accent-2: var(--rank-b-2);
+
+  --font-display: 'Cinzel', serif;
+  --font-display-deco: 'Cinzel Decorative', serif;
+  --font-body: 'EB Garamond', serif;
+  --font-mono: 'Share Tech Mono', monospace;
+}
+
+*{box-sizing:border-box;}
+html,body{
+  margin:0; padding:0; height:100%;
+  background:var(--void);
+  color:var(--text-hi);
+  font-family:var(--font-body);
+  overflow-x:hidden;
+}
+body{
+  min-height:100vh;
+  position:relative;
+}
+::selection{ background:var(--accent-1); color:#0a0a0a; }
+button{ font-family:inherit; cursor:pointer; }
+a{ color:inherit; }
+
+/* focus visibility */
+button:focus-visible, .box:focus-visible{
+  outline:2px solid var(--accent-2);
+  outline-offset:3px;
+}
+
+/* ============================= BACKDROP ============================= */
+#bg-fog{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(60% 50% at 20% 15%, rgba(91,127,255,0.10), transparent 60%),
+    radial-gradient(50% 40% at 85% 80%, rgba(155,107,255,0.10), transparent 60%),
+    var(--void);
+  transition: background 900ms ease;
+}
+#particles{ position:fixed; inset:0; z-index:1; pointer-events:none; }
+.particle{
+  position:absolute; border-radius:50%;
+  background: radial-gradient(circle, var(--accent-2), transparent 70%);
+  opacity:0.55; filter: blur(0.5px);
+  animation: drift linear infinite;
+}
+@keyframes drift{
+  0%{ transform: translateY(0) translateX(0); opacity:0; }
+  10%{ opacity:0.6; }
+  90%{ opacity:0.5; }
+  100%{ transform: translateY(-120vh) translateX(20px); opacity:0; }
+}
+
+/* ============================= LAYOUT SHELL ============================= */
+#app{ position:relative; z-index:2; min-height:100vh; display:flex; flex-direction:column; }
+
+.screen{
+  display:none;
+  flex:1;
+  width:100%;
+  padding: 4vh 6vw 6vh;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+}
+.screen.active{ display:flex; animation: screen-in 620ms cubic-bezier(.2,.8,.2,1); }
+@keyframes screen-in{
+  from{ opacity:0; transform: translateY(14px) scale(0.99); filter: blur(4px); }
+  to{ opacity:1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+.eyebrow{
+  font-family: var(--font-mono);
+  letter-spacing:0.35em;
+  font-size:0.68rem;
+  color: var(--accent-2);
+  text-transform:uppercase;
+  margin-bottom:0.9rem;
+  display:flex; align-items:center; gap:0.6rem;
+}
+.eyebrow::before, .eyebrow::after{
+  content:''; height:1px; width:26px;
+  background: linear-gradient(90deg, transparent, var(--accent-2));
+}
+.eyebrow::after{ background: linear-gradient(90deg, var(--accent-2), transparent); }
+
+/* ============================= HOME ============================= */
+.title-block{ text-align:center; margin-bottom: 3.2rem; }
+.game-title{
+  font-family: var(--font-display-deco);
+  font-weight:900;
+  font-size: clamp(2.6rem, 7vw, 5.2rem);
+  letter-spacing:0.04em;
+  line-height:1;
+  margin:0;
+  background: linear-gradient(180deg, #ffffff 10%, var(--accent-2) 55%, var(--accent-1) 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  filter: drop-shadow(0 0 26px rgba(155,107,255,0.35));
+  text-shadow:none;
+}
+.game-title .vs{
+  font-family: var(--font-display);
+  font-size:0.42em;
+  vertical-align: middle;
+  color: var(--text-mid);
+  -webkit-text-fill-color: var(--text-mid);
+  margin:0 0.2em;
+  letter-spacing:0.3em;
+}
+.subtitle{
+  font-family: var(--font-mono);
+  color: var(--text-mid);
+  letter-spacing:0.22em;
+  font-size: clamp(0.78rem, 1.6vw, 1.05rem);
+  margin-top:0.9rem;
+  text-transform:uppercase;
+}
+
+.gates{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(160px, 220px));
+  gap: clamp(1rem, 2.4vw, 2.2rem);
+  margin-top: 1rem;
+}
+@media (max-width: 900px){
+  .gates{ grid-template-columns: repeat(2, minmax(140px,1fr)); max-width:520px; }
+}
+
+.box{
+  position:relative;
+  aspect-ratio: 3/4;
+  border-radius: 10px 10px 40px 40px;
+  border: 1px solid var(--hairline);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), transparent 40%),
+    var(--stone-800);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:0.8rem;
+  padding:1rem;
+  color: var(--text-mid);
+  transition: transform 320ms cubic-bezier(.2,.8,.2,1), border-color 320ms, box-shadow 320ms;
+  overflow:hidden;
+  isolation:isolate;
+}
+.box::before{
+  content:'';
+  position:absolute; inset:0; z-index:-1;
+  background: radial-gradient(60% 60% at 50% 30%, var(--glow, var(--accent-1)) 0%, transparent 70%);
+  opacity:0.16;
+  transition: opacity 320ms;
+}
+.box .rune{
+  width:56px; height:56px;
+  border-radius:50%;
+  border:1.5px solid var(--glow, var(--accent-1));
+  display:flex; align-items:center; justify-content:center;
+  font-family: var(--font-display);
+  font-size:1.5rem;
+  color: var(--glow, var(--accent-1));
+  animation: rune-spin 14s linear infinite;
+  box-shadow: 0 0 18px -2px var(--glow, var(--accent-1));
+}
+.box .rune span{ display:inline-block; animation: rune-spin-rev 14s linear infinite; }
+@keyframes rune-spin{ to{ transform: rotate(360deg); } }
+@keyframes rune-spin-rev{ to{ transform: rotate(-360deg); } }
+
+.box .gate-label{
+  font-family: var(--font-mono);
+  font-size:0.65rem;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  color: var(--text-lo);
+}
+.box:hover, .box:focus-visible{
+  transform: translateY(-6px);
+  border-color: var(--glow, var(--accent-1));
+  box-shadow: 0 16px 40px -14px var(--glow, var(--accent-1));
+}
+.box:hover::before{ opacity:0.3; }
+.box:active{ transform: translateY(-2px) scale(0.98); }
+.box.cracking{ animation: crack 520ms ease forwards; }
+@keyframes crack{
+  0%{ filter:none; }
+  30%{ filter: brightness(1.6); }
+  60%{ transform: scale(1.04) rotate(-0.5deg); }
+  100%{ transform: scale(0.2); opacity:0; filter:brightness(3); }
+}
+
+.box:nth-child(1){ --glow: var(--rank-b-1); }
+.box:nth-child(2){ --glow: var(--rank-a-1); }
+.box:nth-child(3){ --glow: var(--rank-s-1); }
+.box:nth-child(4){ --glow: var(--rank-d-1); }
+
+.hint-text{
+  margin-top:2.2rem; color:var(--text-lo); font-family:var(--font-mono);
+  font-size:0.72rem; letter-spacing:0.08em; text-align:center; max-width:560px;
+}
+
+.progress-track{
+  display:flex; gap:0.5rem; margin-top:1.6rem;
+}
+.progress-dot{
+  width:9px; height:9px; border-radius:50%;
+  background: var(--stone-600); border:1px solid var(--hairline);
+  transition: all 300ms;
+}
+.progress-dot.done{ background: var(--accent-2); box-shadow:0 0 10px var(--accent-2); }
+
+/* ============================= BUTTONS ============================= */
+.btn{
+  font-family: var(--font-mono);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  font-size:0.85rem;
+  padding: 0.95rem 1.8rem;
+  border-radius: 6px;
+  border:1px solid var(--accent-2);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0));
+  color: var(--text-hi);
+  position:relative;
+  transition: transform 180ms, box-shadow 180ms, background 180ms;
+}
+.btn:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px -10px var(--accent-2); background: rgba(255,255,255,0.1); }
+.btn:active{ transform: translateY(0); }
+.btn-primary{
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  border:none; color:#0a0a0f; font-weight:700;
+}
+.btn-primary:hover{ box-shadow: 0 12px 30px -10px var(--accent-1); }
+.btn[disabled]{ opacity:0.35; pointer-events:none; }
+.btn-ghost{ border-color: var(--hairline); background:transparent; color:var(--text-mid); }
+
+/* ============================= REVEAL SCREEN ============================= */
+.rank-seal{
+  width:150px; height:150px; border-radius:50%;
+  border:2px solid var(--accent-1);
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  margin: 0 auto 1.6rem;
+  box-shadow: 0 0 60px -6px var(--accent-1), inset 0 0 30px -10px var(--accent-2);
+  animation: seal-stamp 700ms cubic-bezier(.2,.9,.25,1.4);
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,0.08), transparent 70%);
+}
+@keyframes seal-stamp{
+  0%{ transform: scale(2.4) rotate(-14deg); opacity:0; }
+  60%{ transform: scale(0.92) rotate(2deg); opacity:1; }
+  100%{ transform: scale(1) rotate(0); }
+}
+.rank-seal .rank-letter{ font-family: var(--font-display-deco); font-size:2.6rem; color: var(--accent-1); line-height:1; }
+.rank-seal .rank-word{ font-family: var(--font-mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-mid); margin-top:0.2rem; }
+
+.congrats{ text-align:center; }
+.congrats h2{
+  font-family: var(--font-display); font-weight:600; font-size:1.1rem;
+  color: var(--text-mid); text-transform:uppercase; letter-spacing:0.14em; margin:0 0 0.4rem;
+}
+.congrats h1{
+  font-family: var(--font-display-deco); font-size: clamp(1.8rem, 4.4vw, 3.1rem);
+  margin:0 0 0.6rem; color: var(--text-hi);
+}
+.congrats h1 .cat{ color: var(--accent-1); }
+.enemy-line{
+  font-family: var(--font-mono); color: var(--text-lo); font-size:0.85rem; letter-spacing:0.06em;
+  margin-bottom:2rem;
+}
+
+/* ============================= DUNGEON / CHALLENGE ============================= */
+.dungeon-header{ text-align:center; margin-bottom:2.2rem; }
+.dungeon-header .rank-chip{
+  display:inline-block; font-family:var(--font-mono); font-size:0.7rem; letter-spacing:0.2em;
+  border:1px solid var(--accent-1); color:var(--accent-1); padding:0.3rem 0.8rem; border-radius:999px;
+  margin-bottom:0.8rem;
+}
+.dungeon-header h1{ font-family: var(--font-display); font-size: clamp(1.6rem,3.6vw,2.4rem); margin:0.2rem 0; }
+.dungeon-header p{ color:var(--text-mid); font-family:var(--font-mono); font-size:0.78rem; letter-spacing:0.05em; }
+
+.cards{
+  display:grid; grid-template-columns: 1fr 1fr; gap: clamp(1rem,2vw,1.8rem);
+  width:100%; max-width:1100px; margin-bottom:1.6rem;
+}
+@media (max-width:760px){ .cards{ grid-template-columns:1fr; } }
+
+.card{
+  background: linear-gradient(180deg, var(--stone-800), var(--stone-900));
+  border:1px solid var(--hairline); border-radius:14px;
+  padding: 1.5rem 1.6rem; position:relative; overflow:hidden;
+  transition: border-color 260ms, transform 260ms, box-shadow 260ms;
+}
+.card::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+}
+.card .card-tag{
+  font-family: var(--font-mono); font-size:0.68rem; letter-spacing:0.2em;
+  color: var(--accent-2); text-transform:uppercase; margin-bottom:0.7rem; display:block;
+}
+.card p{
+  font-family: var(--font-body); font-size:1.08rem; line-height:1.65; color: var(--text-hi);
+  font-style: italic;
+}
+.card.selectable{ cursor:pointer; }
+.card.selectable:hover{ transform: translateY(-4px); border-color: var(--accent-2); box-shadow: 0 16px 34px -18px var(--accent-2); }
+.card.chosen{ border-color: var(--accent-1); box-shadow: 0 0 0 2px var(--accent-1) inset, 0 16px 40px -16px var(--accent-1); }
+.card .pick-btn{
+  margin-top:1.1rem; width:100%;
+  padding:0.7rem; border-radius:6px; border:1px solid var(--hairline);
+  background:transparent; color:var(--text-mid); font-family:var(--font-mono); font-size:0.72rem;
+  letter-spacing:0.14em; text-transform:uppercase; transition: all 220ms;
+}
+.card.chosen .pick-btn{ background: var(--accent-1); color:#0a0a0f; border-color:var(--accent-1); font-weight:700; }
+
+.card.correct{ border-color:#37e08f !important; box-shadow:0 0 0 2px #37e08f inset, 0 16px 44px -16px #37e08f !important; }
+.card.correct::after{ content:'AI'; position:absolute; top:12px; right:14px; font-family:var(--font-mono); font-size:0.7rem; color:#37e08f; letter-spacing:0.15em; }
+.card.human-correct{ border-color: var(--accent-2) !important; }
+.card.human-correct::after{ content:'HUMAN'; position:absolute; top:12px; right:14px; font-family:var(--font-mono); font-size:0.7rem; color:var(--accent-2); letter-spacing:0.15em; }
+
+.submit-row{ display:flex; justify-content:center; gap:1rem; margin-top:0.6rem; }
+
+/* ============================= RESULT ============================= */
+.result-banner{
+  text-align:center; padding: 2.4rem 2rem; border-radius:16px; max-width:640px; width:100%;
+  border:1px solid var(--hairline); margin-bottom:1.6rem;
+  background: var(--stone-800);
+  animation: result-pop 480ms cubic-bezier(.2,.9,.25,1.3);
+}
+@keyframes result-pop{ from{ transform: scale(0.85); opacity:0; } to{ transform:scale(1); opacity:1; } }
+.result-banner.correct{ border-color:#37e08f; box-shadow:0 0 60px -18px #37e08f; }
+.result-banner.incorrect{ border-color:#ff4d5e; box-shadow:0 0 60px -18px #ff4d5e; }
+.result-banner .result-title{
+  font-family: var(--font-display-deco); font-size:clamp(1.8rem,4vw,2.6rem); margin:0 0 0.4rem;
+}
+.result-banner.correct .result-title{ color:#37e08f; }
+.result-banner.incorrect .result-title{ color:#ff4d5e; }
+.result-banner p{ color: var(--text-mid); font-family:var(--font-mono); font-size:0.85rem; letter-spacing:0.03em; }
+.result-icon{ font-size:2.6rem; margin-bottom:0.6rem; }
+
+/* ============================= EXPLANATION / BOSS ROOM ============================= */
+.boss-frame{ width:100%; max-width:1000px; }
+.boss-title{ text-align:center; margin-bottom:1.8rem; }
+.boss-title .eyebrow{ justify-content:center; }
+.boss-title h1{ font-family: var(--font-display-deco); font-size: clamp(1.9rem,4.2vw,3rem);
+  background: linear-gradient(180deg,#fff, var(--accent-1)); -webkit-background-clip:text; background-clip:text; color:transparent; margin:0.2rem 0; }
+
+.qa-list{ display:flex; flex-direction:column; gap:1rem; margin: 2rem 0; }
+.qa-item{
+  border:1px solid var(--hairline); border-radius:10px; background: var(--stone-800);
+  padding:1.2rem 1.4rem;
+}
+.qa-item .q-num{ font-family: var(--font-mono); color: var(--accent-1); font-size:0.72rem; letter-spacing:0.2em; }
+.qa-item h3{ font-family: var(--font-display); font-weight:600; font-size:1.02rem; margin:0.35rem 0 0.6rem; color:var(--text-hi); }
+.qa-item p{ color: var(--text-mid); line-height:1.6; margin:0; font-size:0.98rem; }
+
+.footer-row{ display:flex; gap:1rem; justify-content:center; margin-top:1rem; flex-wrap:wrap; }
+
+/* transition overlay for gate opening */
+#transition-veil{
+  position:fixed; inset:0; z-index:50; pointer-events:none; opacity:0;
+  background: radial-gradient(circle at 50% 50%, var(--accent-1), var(--void) 70%);
+  transition: opacity 420ms ease;
+}
+#transition-veil.show{ opacity:1; }
+
+.sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+
+@media (prefers-reduced-motion: reduce){
+  *{ animation-duration:0.01ms !important; animation-iteration-count:1 !important; transition-duration:0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg-fog"></div>
+<div id="particles" aria-hidden="true"></div>
+<div id="transition-veil" aria-hidden="true"></div>
+
+<div id="app">
+
+  <!-- ============ SCREEN: HOME ============ -->
+  <section class="screen active" id="screen-home">
+    <div class="eyebrow">A Dark-Fantasy Translation Trial</div>
+    <div class="title-block">
+      <h1 class="game-title">HUMAN <span class="vs">VS</span> AI</h1>
+      <p class="subtitle">Guess the Translation?</p>
+    </div>
+
+    <div class="gates" id="gates" role="list">
+      <!-- boxes injected by JS -->
+    </div>
+
+    <p class="hint-text">Four sealed gates. Four hidden trials.<br>Choose a gate to learn which dungeon awaits.</p>
+
+    <div class="progress-track" id="progress-track" aria-label="Dungeons cleared"></div>
+  </section>
+
+  <!-- ============ SCREEN: REVEAL ============ -->
+  <section class="screen" id="screen-reveal">
+    <div class="congrats">
+      <div class="rank-seal" id="reveal-seal">
+        <div class="rank-letter" id="reveal-rank-letter">B</div>
+        <div class="rank-word">RANK</div>
+      </div>
+      <h2>Congratulations, Player!</h2>
+      <h1>You chose the <span class="cat" id="reveal-category">Academic</span> Dungeon.</h1>
+      <p class="enemy-line" id="reveal-enemy">B-RANK DUNGEON — GOBLINS — MODERATE</p>
+      <button class="btn btn-primary" id="btn-enter-dungeon">Enter the Dungeon</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: DUNGEON CHALLENGE ============ -->
+  <section class="screen" id="screen-dungeon">
+    <div class="dungeon-header">
+      <span class="rank-chip" id="dungeon-rank-chip">B-RANK DUNGEON</span>
+      <h1 id="dungeon-title">The Academic Dungeon</h1>
+      <p>One of these translations was forged by a machine. Choose wisely.</p>
+    </div>
+
+    <div class="cards" id="challenge-cards">
+      <div class="card selectable" id="card-A" data-slot="A">
+        <span class="card-tag">Translation A</span>
+        <p id="text-A"></p>
+        <button class="pick-btn" data-slot="A">Mark as AI</button>
+      </div>
+      <div class="card selectable" id="card-B" data-slot="B">
+        <span class="card-tag">Translation B</span>
+        <p id="text-B"></p>
+        <button class="pick-btn" data-slot="B">Mark as AI</button>
+      </div>
+    </div>
+
+    <div class="submit-row">
+      <button class="btn btn-primary" id="btn-submit-answer" disabled>Submit Answer</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: RESULT ============ -->
+  <section class="screen" id="screen-result">
+    <div class="result-banner" id="result-banner">
+      <div class="result-icon" id="result-icon">⚔️</div>
+      <div class="result-title" id="result-title">Correct, Player!</div>
+      <p id="result-sub">You correctly identified the AI translation.</p>
+    </div>
+    <div class="footer-row">
+      <button class="btn btn-primary" id="btn-go-explanation">Explanation</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN: EXPLANATION / BOSS ROOM ============ -->
+  <section class="screen" id="screen-explanation">
+    <div class="boss-frame">
+      <div class="boss-title">
+        <div class="eyebrow" id="boss-eyebrow">Boss Room</div>
+        <h1 id="boss-heading">Academic Dungeon — Revealed</h1>
+      </div>
+
+      <div class="cards">
+        <div class="card human-correct" id="exp-card-human">
+          <span class="card-tag">Human Translation</span>
+          <p id="exp-text-human"></p>
+        </div>
+        <div class="card correct" id="exp-card-ai">
+          <span class="card-tag">AI Translation</span>
+          <p id="exp-text-ai"></p>
+        </div>
+      </div>
+
+      <div class="qa-list" id="qa-list"></div>
+
+      <div class="footer-row">
+        <button class="btn btn-ghost" id="btn-back-home">Return to the Lobby</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   DATA — placeholder content, structured for easy replacement
+   ============================================================ */
+const DUNGEONS = {
+  academic: {
+    key: 'academic',
+    category: 'Academic',
+    rank: 'B',
+    rankWord: 'B-RANK DUNGEON',
+    enemy: 'Goblins',
+    difficulty: 'Moderate',
+    themeVars: { 1:'--rank-b-1', 2:'--rank-b-2' },
+    source: "La consolidation de la mémoire dépend en grande partie de la qualité du sommeil qui suit l'apprentissage, un processus au cours duquel l'hippocampe transfère progressivement les traces mnésiques vers le néocortex.",
+    human: "Memory consolidation depends heavily on the quality of sleep following learning — a process during which the hippocampus gradually hands memory traces over to the neocortex.",
+    ai: "The consolidation of memory is largely dependent on the quality of the sleep that follows the learning process, a process during which the hippocampus progressively transfers memory traces to the neocortex.",
+    correctIsAI: 'ai',
+    questions: [
+      {
+        q: "Why does this paragraph appear to be AI-generated?",
+        a: "It mirrors the source sentence structure almost clause-for-clause, repeats the word \"process\" where a human editor would trim it, and stays literal rather than tightening the phrasing for English readability."
+      },
+      {
+        q: "Why does this paragraph appear to be human-generated?",
+        a: "It restructures the sentence for natural English flow, drops redundant words, and uses a livelier verb choice (\"hands memory traces over to\") instead of a stiff literal equivalent."
+      },
+      {
+        q: "What is the key difference between the two translations?",
+        a: "The human version prioritizes readability and natural rhythm over strict structural fidelity, while the AI version preserves the original sentence architecture almost exactly, producing slightly redundant phrasing."
+      }
+    ]
+  },
+  technical: {
+    key: 'technical',
+    category: 'Technical',
+    rank: 'A',
+    rankWord: 'A-RANK DUNGEON',
+    enemy: 'Werewolves',
+    difficulty: 'Hard',
+    themeVars: { 1:'--rank-a-1', 2:'--rank-a-2' },
+    source: "Le serveur met en cache les réponses pendant soixante secondes ; si la charge dépasse le seuil configuré, les requêtes excédentaires sont mises en file d'attente plutôt que rejetées.",
+    human: "The server caches responses for sixty seconds. If load exceeds the configured threshold, extra requests are queued instead of dropped.",
+    ai: "The server caches the responses for a duration of sixty seconds; if the load exceeds the configured threshold, the excess requests are placed in a queue rather than being rejected.",
+    correctIsAI: 'ai',
+    questions: [
+      {
+        q: "Why does this paragraph appear to be AI-generated?",
+        a: "It keeps the semicolon-joined clause structure of the source, adds filler like \"a duration of,\" and uses the passive \"being rejected\" where technical writing usually favors short, direct verbs."
+      },
+      {
+        q: "Why does this paragraph appear to be human-generated?",
+        a: "It splits the sentence into two short, scannable statements — the style real documentation uses — and swaps \"rejected\" for the punchier, more idiomatic \"dropped.\""
+      },
+      {
+        q: "What is the key difference between the two translations?",
+        a: "The human version optimizes for the conventions of technical writing (short sentences, active voice, common jargon), while the AI version stays closer to the source's grammar at the cost of natural technical style."
+      }
+    ]
+  },
+  legal: {
+    key: 'legal',
+    category: 'Legal',
+    rank: 'S',
+    rankWord: 'S-RANK DUNGEON',
+    enemy: 'Ice Elves',
+    difficulty: 'Very Hard',
+    themeVars: { 1:'--rank-s-1', 2:'--rank-s-2' },
+    source: "Sauf disposition contraire, toute modification du présent contrat doit être constatée par écrit et signée par les deux parties, faute de quoi elle sera réputée nulle et non avenue.",
+    human: "Unless otherwise stated, any amendment to this agreement must be made in writing and signed by both parties, or it will be considered void.",
+    ai: "Except as otherwise provided, any modification of the present contract must be recorded in writing and signed by both parties, failing which it shall be deemed null and void.",
+    correctIsAI: 'ai',
+    questions: [
+      {
+        q: "Why does this paragraph appear to be AI-generated?",
+        a: "It leans on archaic legal calques — \"the present contract,\" \"failing which,\" \"null and void\" — that closely mirror French legal phrasing rather than standard modern English contract language."
+      },
+      {
+        q: "Why does this paragraph appear to be human-generated?",
+        a: "It uses the plain, modern contract English a practicing lawyer would draft — \"this agreement,\" \"or it will be considered void\" — trading literal fidelity for the register real legal documents use."
+      },
+      {
+        q: "What is the key difference between the two translations?",
+        a: "The human version localizes the legal register into contemporary English drafting conventions, while the AI version reproduces the formal, almost word-for-word structure of the French legal source."
+      }
+    ]
+  },
+  literature: {
+    key: 'literature',
+    category: 'Literature',
+    rank: 'DOUBLE',
+    rankWord: 'DOUBLE DUNGEON',
+    enemy: 'Demon Lord',
+    difficulty: 'Extreme',
+    themeVars: { 1:'--rank-d-1', 2:'--rank-d-2' },
+    source: "La nuit tombait sur la ville comme un rideau de velours, et dans le silence, on entendait le fleuve murmurer de vieilles histoires que personne n'osait plus raconter.",
+    human: "Night fell over the city like a curtain of velvet, and in the silence you could hear the river murmuring old stories no one dared tell anymore.",
+    ai: "Night was falling on the city like a velvet curtain, and in the silence, one could hear the river murmur old stories that no one dared to tell anymore.",
+    correctIsAI: 'ai',
+    questions: [
+      {
+        q: "Why does this paragraph appear to be AI-generated?",
+        a: "It keeps the more formal \"one could hear\" and a slightly flatter rhythm, translating imagery accurately but without reshaping the cadence the way a literary translator would for emotional effect."
+      },
+      {
+        q: "Why does this paragraph appear to be human-generated?",
+        a: "It shifts to the more intimate \"you could hear,\" tightens the rhythm, and lets the sentence breathe the way English literary prose does, rather than tracking the French sentence beat for beat."
+      },
+      {
+        q: "What is the key difference between the two translations?",
+        a: "The human version makes interpretive choices for tone and rhythm — the hallmark of literary translation — while the AI version renders the imagery faithfully but stays closer to the source's grammatical shape."
+      }
+    ]
+  }
+};
+
+const ORDER = ['academic','technical','legal','literature'];
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let gateAssignment = [];   // category key per gate index (shuffled)
+let clearedKeys = [];      // dungeons completed this session
+let currentKey = null;
+let slotMap = { A: null, B: null }; // 'human' | 'ai' per slot, randomized per attempt
+let chosenSlot = null;
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function shuffledOrder(){
+  const arr = [...ORDER];
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function buildGates(){
+  gateAssignment = shuffledOrder();
+  const wrap = document.getElementById('gates');
+  wrap.innerHTML = '';
+  gateAssignment.forEach((key, idx) => {
+    const box = document.createElement('button');
+    box.className = 'box';
+    box.setAttribute('role','listitem');
+    box.setAttribute('aria-label', 'Mystery gate ' + (idx+1));
+    box.dataset.key = key;
+    box.innerHTML = `
+      <div class="rune"><span>✦</span></div>
+      <div class="gate-label">Gate ${idx+1}<br>???</div>
+    `;
+    box.addEventListener('click', () => selectGate(box, key));
+    wrap.appendChild(box);
+  });
+  buildProgress();
+}
+
+function buildProgress(){
+  const track = document.getElementById('progress-track');
+  track.innerHTML = '';
+  ORDER.forEach(key => {
+    const dot = document.createElement('span');
+    dot.className = 'progress-dot' + (clearedKeys.includes(key) ? ' done' : '');
+    track.appendChild(dot);
+  });
+}
+
+/* particles */
+function spawnParticles(){
+  const host = document.getElementById('particles');
+  host.innerHTML = '';
+  const count = window.innerWidth < 700 ? 16 : 34;
+  for(let i=0;i<count;i++){
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = 2 + Math.random()*4;
+    p.style.width = size+'px';
+    p.style.height = size+'px';
+    p.style.left = Math.random()*100+'vw';
+    p.style.bottom = '-5vh';
+    p.style.animationDuration = (10+Math.random()*14)+'s';
+    p.style.animationDelay = (Math.random()*10)+'s';
+    host.appendChild(p);
+  }
+}
+
+/* ============================================================
+   SCREEN NAVIGATION
+   ============================================================ */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function veilFlash(cb){
+  const veil = document.getElementById('transition-veil');
+  veil.classList.add('show');
+  playTone(220, 0.05, 'triangle');
+  setTimeout(() => { cb(); }, 260);
+  setTimeout(() => veil.classList.remove('show'), 560);
+}
+
+function applyTheme(dungeon){
+  const root = document.documentElement;
+  root.style.setProperty('--accent-1', getComputedStyle(root).getPropertyValue(dungeon.themeVars[1]));
+  root.style.setProperty('--accent-2', getComputedStyle(root).getPropertyValue(dungeon.themeVars[2]));
+}
+
+/* ============================================================
+   FLOW: GATE -> REVEAL
+   ============================================================ */
+function selectGate(box, key){
+  if(box.classList.contains('cracking')) return;
+  box.classList.add('cracking');
+  playTone(300, 0.06, 'square');
+  currentKey = key;
+  const dungeon = DUNGEONS[key];
+  applyTheme(dungeon);
+  veilFlash(() => {
+    renderReveal(dungeon);
+    showScreen('screen-reveal');
+  });
+}
+
+function renderReveal(d){
+  document.getElementById('reveal-rank-letter').textContent = d.rank;
+  document.getElementById('reveal-category').textContent = d.category;
+  document.getElementById('reveal-enemy').textContent = `${d.rankWord} — ${d.enemy.toUpperCase()} — ${d.difficulty.toUpperCase()}`;
+}
+
+document.getElementById('btn-enter-dungeon').addEventListener('click', () => {
+  const d = DUNGEONS[currentKey];
+  veilFlash(() => {
+    renderDungeon(d);
+    showScreen('screen-dungeon');
+  });
+});
+
+/* ============================================================
+   FLOW: DUNGEON CHALLENGE
+   ============================================================ */
+function renderDungeon(d){
+  document.getElementById('dungeon-rank-chip').textContent = d.rankWord;
+  document.getElementById('dungeon-title').textContent = `The ${d.category} Dungeon`;
+
+  // randomize which slot holds the AI text
+  const aiInA = Math.random() < 0.5;
+  slotMap.A = aiInA ? 'ai' : 'human';
+  slotMap.B = aiInA ? 'human' : 'ai';
+
+  document.getElementById('text-A').textContent = slotMap.A === 'ai' ? d.ai : d.human;
+  document.getElementById('text-B').textContent = slotMap.B === 'ai' ? d.ai : d.human;
+
+  chosenSlot = null;
+  ['A','B'].forEach(s => {
+    document.getElementById('card-'+s).classList.remove('chosen','correct','human-correct');
+  });
+  document.getElementById('btn-submit-answer').disabled = true;
+}
+
+document.querySelectorAll('.pick-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pickSlot(btn.dataset.slot);
+  });
+});
+document.querySelectorAll('#card-A, #card-B').forEach(card => {
+  card.addEventListener('click', () => pickSlot(card.dataset.slot));
+});
+
+function pickSlot(slot){
+  chosenSlot = slot;
+  ['A','B'].forEach(s => {
+    document.getElementById('card-'+s).classList.toggle('chosen', s === slot);
+  });
+  document.getElementById('btn-submit-answer').disabled = false;
+  playTone(440, 0.04, 'sine');
+}
+
+document.getElementById('btn-submit-answer').addEventListener('click', () => {
+  if(!chosenSlot) return;
+  const isCorrect = slotMap[chosenSlot] === 'ai';
+  // reveal on the cards themselves
+  ['A','B'].forEach(s => {
+    const card = document.getElementById('card-'+s);
+    card.classList.remove('chosen');
+    if(slotMap[s] === 'ai') card.classList.add('correct');
+    else card.classList.add('human-correct');
+  });
+  setTimeout(() => {
+    renderResult(isCorrect);
+    if(!clearedKeys.includes(currentKey)) clearedKeys.push(currentKey);
+    showScreen('screen-result');
+  }, 700);
+});
+
+/* ============================================================
+   FLOW: RESULT
+   ============================================================ */
+function renderResult(isCorrect){
+  const banner = document.getElementById('result-banner');
+  banner.classList.remove('correct','incorrect');
+  banner.classList.add(isCorrect ? 'correct' : 'incorrect');
+  document.getElementById('result-icon').textContent = isCorrect ? '🏆' : '💀';
+  document.getElementById('result-title').textContent = isCorrect ? 'Correct, Player!' : 'Incorrect, Player.';
+  document.getElementById('result-sub').textContent = isCorrect
+    ? 'You correctly identified the AI translation. The gate yields its treasure.'
+    : "The dungeon claims this round. Enter the boss room to see what gave it away.";
+  playTone(isCorrect ? 660 : 160, 0.18, isCorrect ? 'triangle' : 'sawtooth');
+}
+
+document.getElementById('btn-go-explanation').addEventListener('click', () => {
+  const d = DUNGEONS[currentKey];
+  veilFlash(() => {
+    renderExplanation(d);
+    showScreen('screen-explanation');
+  });
+});
+
+/* ============================================================
+   FLOW: EXPLANATION / BOSS ROOM
+   ============================================================ */
+function renderExplanation(d){
+  document.getElementById('boss-eyebrow').textContent = d.rank === 'DOUBLE' ? 'Double Dungeon — Boss Room' : 'Boss Room';
+  document.getElementById('boss-heading').textContent = `${d.category} Dungeon — Revealed`;
+  document.getElementById('exp-text-human').textContent = d.human;
+  document.getElementById('exp-text-ai').textContent = d.ai;
+
+  const list = document.getElementById('qa-list');
+  list.innerHTML = '';
+  d.questions.forEach((item, idx) => {
+    const el = document.createElement('div');
+    el.className = 'qa-item';
+    el.innerHTML = `
+      <div class="q-num">QUESTION 0${idx+1}</div>
+      <h3>${item.q}</h3>
+      <p>${item.a}</p>
+    `;
+    list.appendChild(el);
+  });
+}
+
+document.getElementById('btn-back-home').addEventListener('click', () => {
+  currentKey = null;
+  document.documentElement.style.setProperty('--accent-1', getComputedStyle(document.documentElement).getPropertyValue('--rank-b-1'));
+  document.documentElement.style.setProperty('--accent-2', getComputedStyle(document.documentElement).getPropertyValue('--rank-b-2'));
+  veilFlash(() => {
+    buildGates();
+    showScreen('screen-home');
+  });
+});
+
+/* ============================================================
+   AUDIO — tiny WebAudio blips, no external assets
+   ============================================================ */
+let audioCtx = null;
+function playTone(freq, dur, type){
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }catch(e){ /* audio not available, silently ignore */ }
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+buildGates();
+spawnParticles();
+window.addEventListener('resize', () => { spawnParticles(); });
+</script>
+</body>
+</html>
